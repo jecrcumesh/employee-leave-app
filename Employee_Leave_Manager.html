@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Employee Leave Manager</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --primary:#2563eb; --primary-dark:#1d4ed8; --bg:#f4f6fb; --card:#ffffff;
+    --text:#1e293b; --muted:#64748b; --border:#e2e8f0;
+    --green:#16a34a; --red:#dc2626; --amber:#d97706; --slate:#475569;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);}
+  header{background:linear-gradient(135deg,#1e3a8a,#2563eb);color:#fff;padding:20px 32px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;}
+  header h1{margin:0;font-size:22px;font-weight:600;}
+  header p{margin:2px 0 0;font-size:13px;opacity:.85;}
+  .header-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  button{cursor:pointer;border:none;border-radius:8px;padding:9px 16px;font-size:13.5px;font-weight:600;transition:.15s;}
+  .btn-primary{background:#fff;color:var(--primary-dark);}
+  .btn-primary:hover{background:#e0e7ff;}
+  .btn-ghost{background:rgba(255,255,255,.15);color:#fff;}
+  .btn-ghost:hover{background:rgba(255,255,255,.28);}
+  .sync-dot{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:6px;}
+  .sync-ok{background:#4ade80;}
+  .sync-off{background:#94a3b8;}
+  .sync-err{background:#f87171;}
+  .sync-status{font-size:12px;color:#e0e7ff;display:flex;align-items:center;}
+  nav{background:var(--card);border-bottom:1px solid var(--border);display:flex;gap:2px;padding:0 24px;overflow-x:auto;}
+  nav button{background:none;border-radius:0;padding:14px 18px;color:var(--muted);font-size:14px;border-bottom:3px solid transparent;white-space:nowrap;}
+  nav button.active{color:var(--primary);border-bottom:3px solid var(--primary);}
+  nav button:hover{color:var(--primary-dark);}
+  main{padding:24px 32px;max-width:1280px;margin:0 auto;}
+  .page{display:none;animation:fade .15s ease;}
+  .page.active{display:block;}
+  @keyframes fade{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:translateY(0);}}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:16px;margin-bottom:24px;}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px 20px;box-shadow:0 1px 2px rgba(0,0,0,.03);}
+  .card .label{font-size:12.5px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.03em;}
+  .card .value{font-size:28px;font-weight:700;margin-top:6px;}
+  .card.green .value{color:var(--green);}
+  .card.red .value{color:var(--red);}
+  .card.amber .value{color:var(--amber);}
+  .card.blue .value{color:var(--primary);}
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:22px;margin-bottom:22px;}
+  .panel h2{margin:0 0 16px;font-size:17px;}
+  .panel h3{margin:0 0 12px;font-size:15px;color:var(--slate);}
+  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px;}
+  .field{display:flex;flex-direction:column;gap:5px;}
+  .field label{font-size:12.5px;color:var(--muted);font-weight:600;}
+  input,select,textarea{padding:9px 11px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:#fff;color:var(--text);font-family:inherit;}
+  input:focus,select:focus,textarea:focus{outline:2px solid #bfdbfe;border-color:var(--primary);}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;}
+  th{background:#f1f5f9;text-align:left;padding:10px 12px;font-weight:600;color:var(--slate);border-bottom:1px solid var(--border);white-space:nowrap;}
+  td{padding:9px 12px;border-bottom:1px solid #f1f5f9;}
+  tr:hover td{background:#fafcff;}
+  .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600;}
+  .b-earned{background:#fef3c7;color:#92400e;}
+  .b-other{background:#e0e7ff;color:#3730a3;}
+  .icon-btn{background:none;padding:5px 9px;border-radius:6px;font-size:13px;}
+  .icon-btn.edit{color:var(--primary);}
+  .icon-btn.del{color:var(--red);}
+  .icon-btn:hover{background:#f1f5f9;}
+  .empty{text-align:center;color:var(--muted);padding:30px;font-size:14px;}
+  .bar{height:8px;background:#e2e8f0;border-radius:6px;overflow:hidden;margin-top:6px;}
+  .bar-fill{height:100%;background:var(--primary);}
+  .footer-note{text-align:center;color:var(--muted);font-size:12px;margin-top:20px;}
+  .toast{position:fixed;bottom:24px;right:24px;background:#1e293b;color:#fff;padding:12px 20px;border-radius:8px;font-size:13.5px;box-shadow:0 6px 20px rgba(0,0,0,.2);opacity:0;transform:translateY(10px);transition:.25s;pointer-events:none;z-index:999;}
+  .toast.show{opacity:1;transform:translateY(0);}
+  .note{background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a8a;border-radius:8px;padding:12px 14px;font-size:13px;margin-bottom:16px;}
+  .warn{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:8px;padding:12px 14px;font-size:13px;margin-bottom:16px;}
+  code{background:#f1f5f9;padding:1px 6px;border-radius:4px;font-size:12.5px;}
+  @media (max-width:640px){main{padding:16px;}header{padding:16px;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Employee Leave Manager</h1>
+    <p id="todayLabel"></p>
+  </div>
+  <div class="header-actions">
+    <span class="sync-status" id="syncStatus"><span class="sync-dot sync-off"></span>GitHub sync not connected</span>
+    <button class="btn-ghost" onclick="importExcel()">Import Excel</button>
+    <button class="btn-primary" onclick="exportExcel()">Export to Excel</button>
+    <input type="file" id="importFile" accept=".xlsx" style="display:none" onchange="handleImport(event)">
+  </div>
+</header>
+
+<nav id="tabNav">
+  <button data-tab="dashboard" class="active">Dashboard</button>
+  <button data-tab="employees">Employees</button>
+  <button data-tab="applyleave">Apply Leave</button>
+  <button data-tab="leave">Leave Balance</button>
+  <button data-tab="holidays">Public Holidays</button>
+  <button data-tab="reports">Reports</button>
+  <button data-tab="sync">GitHub Sync</button>
+</nav>
+
+<main>
+
+  <!-- DASHBOARD -->
+  <div class="page active" id="page-dashboard">
+    <div class="cards" id="dashCards"></div>
+    <div class="panel">
+      <h2>Employees on Leave Today</h2>
+      <table><thead><tr><th>Employee</th><th>Department</th><th>Leave Type</th><th>Dates</th><th>Reason</th></tr></thead><tbody id="dashToday"></tbody></table>
+    </div>
+    <div class="panel">
+      <h2>Upcoming Public Holidays</h2>
+      <table><thead><tr><th>Date</th><th>Holiday</th></tr></thead><tbody id="dashHolidays"></tbody></table>
+    </div>
+  </div>
+
+  <!-- EMPLOYEES -->
+  <div class="page" id="page-employees">
+    <div class="panel">
+      <h2 id="empFormTitle">Add Employee</h2>
+      <div class="row">
+        <div class="field"><label>Employee ID</label><input id="empId" placeholder="EMP001"></div>
+        <div class="field"><label>Full Name</label><input id="empName" placeholder="Jane Doe"></div>
+        <div class="field"><label>Department</label><input id="empDept" placeholder="Engineering"></div>
+        <div class="field"><label>Date of Joining</label><input id="empDOJ" type="date"></div>
+        <button class="btn-primary" style="background:var(--primary);color:#fff" onclick="saveEmployee()">Save</button>
+        <button class="btn-ghost" style="background:#e2e8f0;color:#1e293b" onclick="clearEmpForm()">Clear</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Employee List (<span id="empCount">0</span>)</h2>
+      <table>
+        <thead><tr><th>ID</th><th>Name</th><th>Department</th><th>Date of Joining</th><th>Earned Leave Balance</th><th></th></tr></thead>
+        <tbody id="empTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- APPLY LEAVE -->
+  <div class="page" id="page-applyleave">
+    <div class="panel">
+      <h2>Apply / Record Leave</h2>
+      <div class="row">
+        <div class="field"><label>Employee</label><select id="lvEmp"></select></div>
+        <div class="field"><label>From Date</label><input id="lvFrom" type="date"></div>
+        <div class="field"><label>To Date</label><input id="lvTo" type="date"></div>
+        <div class="field"><label>Leave Type</label>
+          <select id="lvType">
+            <option value="Earned">Earned Leave</option>
+            <option value="Other">Other / Unpaid (not deducted)</option>
+          </select>
+        </div>
+        <div class="field" style="flex:1;min-width:200px"><label>Reason (optional)</label><input id="lvReason" placeholder="e.g. Family function"></div>
+        <button class="btn-primary" style="background:var(--primary);color:#fff" onclick="addLeave()">Record Leave</button>
+      </div>
+      <p style="color:var(--muted);font-size:13px;margin:0">Dates that fall on a listed public holiday are automatically excluded from the leave day count.</p>
+    </div>
+    <div class="panel">
+      <h2>Leave Records (<span id="lvCount">0</span>)</h2>
+      <table>
+        <thead><tr><th>Employee</th><th>From</th><th>To</th><th>Type</th><th>Days</th><th>Reason</th><th></th></tr></thead>
+        <tbody id="lvTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- LEAVE BALANCE -->
+  <div class="page" id="page-leave">
+    <div class="panel">
+      <h2>Earned Leave Policy</h2>
+      <div class="row" style="align-items:center">
+        <div class="field"><label>Annual Earned Leave Quota (days/employee/year)</label><input id="elQuota" type="number" value="20" style="width:100px" onchange="setQuota()"></div>
+        <div class="field"><label>Leave Year</label><input id="leaveYear" type="number" style="width:100px" onchange="renderAll()"></div>
+      </div>
+      <p style="color:var(--muted);font-size:13px;margin:0">Public holidays are tracked separately and never consume Earned Leave.</p>
+    </div>
+    <div class="panel">
+      <h2>Employee Leave Balance</h2>
+      <table>
+        <thead><tr><th>ID</th><th>Name</th><th>Allotted</th><th>Taken</th><th>Balance</th><th>Usage</th></tr></thead>
+        <tbody id="leaveTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- HOLIDAYS -->
+  <div class="page" id="page-holidays">
+    <div class="panel">
+      <h2>Add Public Holiday</h2>
+      <div class="row">
+        <div class="field"><label>Date</label><input id="holDate" type="date"></div>
+        <div class="field"><label>Holiday Name</label><input id="holName" placeholder="e.g. Independence Day"></div>
+        <button class="btn-primary" style="background:var(--primary);color:#fff" onclick="addHoliday()">Add Holiday</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Public Holiday List (<span id="holCount">0</span> this year)</h2>
+      <table><thead><tr><th>Date</th><th>Day</th><th>Holiday Name</th><th></th></tr></thead><tbody id="holTable"></tbody></table>
+    </div>
+  </div>
+
+  <!-- REPORTS -->
+  <div class="page" id="page-reports">
+    <div class="panel">
+      <h2>Monthly Leave Report</h2>
+      <div class="row">
+        <div class="field"><label>Month</label><input id="repMonth" type="month"></div>
+        <button class="btn-primary" style="background:var(--primary);color:#fff" onclick="renderReport()">Generate</button>
+      </div>
+      <table>
+        <thead><tr><th>ID</th><th>Name</th><th>Earned Leave Taken (Month)</th><th>Other Leave Taken (Month)</th><th>Earned Leave Balance (Year)</th></tr></thead>
+        <tbody id="repTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- GITHUB SYNC -->
+  <div class="page" id="page-sync">
+    <div class="panel">
+      <h2>GitHub Auto-Save Settings</h2>
+      <div class="note">This app can automatically commit an up-to-date Excel file to a GitHub repository every time you add or change data, so your data lives alongside the web page on GitHub.</div>
+      <div class="warn">For security, your GitHub token is <b>never stored</b>. It's kept only in this browser tab's memory and is cleared when you close or refresh the page. You'll need to re-enter it each session before syncing.</div>
+      <div class="row">
+        <div class="field"><label>Repository Owner</label><input id="ghOwner" placeholder="e.g. umesh"></div>
+        <div class="field"><label>Repository Name</label><input id="ghRepo" placeholder="e.g. employee-leave-app"></div>
+        <div class="field"><label>Branch</label><input id="ghBranch" placeholder="main" value="main"></div>
+        <div class="field" style="flex:1;min-width:220px"><label>File Path in Repo</label><input id="ghPath" placeholder="data/leave-data.xlsx" value="data/leave-data.xlsx"></div>
+      </div>
+      <div class="row">
+        <div class="field" style="flex:1;min-width:280px">
+          <label>Personal Access Token (fine-grained, Contents: Read & Write, this repo only)</label>
+          <input id="ghToken" type="password" placeholder="Paste token here for this session only">
+        </div>
+        <button class="btn-primary" style="background:var(--primary);color:#fff" onclick="saveGithubSettings()">Save For This Session</button>
+        <button class="btn-ghost" style="background:#e2e8f0;color:#1e293b" onclick="syncNow()">Sync Now</button>
+      </div>
+      <p id="syncDetail" style="color:var(--muted);font-size:13px;margin:0"></p>
+    </div>
+    <div class="panel">
+      <h3>How to set this up</h3>
+      <ol style="font-size:13.5px;color:var(--slate);line-height:1.9;padding-left:20px;">
+        <li>Push this HTML file to a GitHub repository, then enable it under <b>Settings → Pages</b> to host it.</li>
+        <li>Create a fine-grained token at <code>github.com/settings/personal-access-tokens/new</code>, scoped only to this repository, with <b>Contents: Read and write</b> permission.</li>
+        <li>Enter the repo owner, repo name, branch, and a file path above (the Excel file will be created automatically the first time you sync).</li>
+        <li>Paste the token above and click <b>Sync Now</b>, or just keep working — the app auto-syncs a few seconds after every change, for as long as this browser tab stays open with the token entered.</li>
+        <li>Re-enter the token each time you reopen the app, since it is intentionally not saved anywhere.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="footer-note">Data is saved automatically in this browser. Use Export to Excel, or GitHub Sync, to back it up.</div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ---------- Data Layer ---------- */
+const STORE_KEY = "leaveAppData_v1";
+let db = loadDB();
+let ghSession = { token: "", owner: "", repo: "", branch: "main", path: "data/leave-data.xlsx", connected: false };
+
+function loadDB(){
+  const raw = localStorage.getItem(STORE_KEY);
+  if(raw){ try { return JSON.parse(raw); } catch(e){} }
+  return { employees: [], leaves: [], holidays: [], elQuota: 20 };
+}
+function saveDB(){
+  localStorage.setItem(STORE_KEY, JSON.stringify(db));
+  scheduleSync();
+}
+
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(()=>t.classList.remove('show'), 2400);
+}
+
+/* ---------- Navigation ---------- */
+document.getElementById('tabNav').addEventListener('click', (e)=>{
+  const btn = e.target.closest('button[data-tab]');
+  if(!btn) return;
+  document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('page-'+btn.dataset.tab).classList.add('active');
+  renderAll();
+});
+
+/* ---------- Helpers ---------- */
+function todayStr(){ return new Date().toISOString().slice(0,10); }
+function fmtDate(d){ return new Date(d+"T00:00:00").toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}); }
+function dayName(d){ return new Date(d+"T00:00:00").toLocaleDateString('en-US',{weekday:'short'}); }
+function yearOf(d){ return d.slice(0,4); }
+function isHoliday(dateStr){ return db.holidays.some(h=>h.date===dateStr); }
+
+function dateRange(from, to){
+  const dates = [];
+  let cur = new Date(from+"T00:00:00");
+  const end = new Date(to+"T00:00:00");
+  while(cur <= end){
+    dates.push(cur.toISOString().slice(0,10));
+    cur.setDate(cur.getDate()+1);
+  }
+  return dates;
+}
+
+/* ---------- Employees ---------- */
+let editingEmpId = null;
+
+function saveEmployee(){
+  const id = document.getElementById('empId').value.trim();
+  const name = document.getElementById('empName').value.trim();
+  const dept = document.getElementById('empDept').value.trim();
+  const doj = document.getElementById('empDOJ').value;
+  if(!id || !name){ toast("Employee ID and Name are required"); return; }
+
+  if(editingEmpId && editingEmpId !== id){
+    const dupIdx = db.employees.findIndex(e=>e.id===id);
+    if(dupIdx > -1){ toast("Employee ID already exists"); return; }
+  }
+  const rec = { id, name, dept, doj };
+  if(editingEmpId){
+    const idx = db.employees.findIndex(e=>e.id===editingEmpId);
+    if(idx>-1) db.employees[idx] = rec;
+    db.leaves.forEach(l=>{ if(l.empId===editingEmpId) l.empId = id; });
+  } else {
+    const existingIdx = db.employees.findIndex(e=>e.id===id);
+    if(existingIdx>-1){ toast("Employee ID already exists"); return; }
+    db.employees.push(rec);
+  }
+  saveDB();
+  clearEmpForm();
+  renderAll();
+  toast("Employee saved");
+}
+
+function editEmployee(id){
+  const e = db.employees.find(e=>e.id===id);
+  if(!e) return;
+  editingEmpId = id;
+  document.getElementById('empId').value = e.id;
+  document.getElementById('empName').value = e.name;
+  document.getElementById('empDept').value = e.dept;
+  document.getElementById('empDOJ').value = e.doj || "";
+  document.getElementById('empFormTitle').textContent = "Edit Employee";
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+function clearEmpForm(){
+  editingEmpId = null;
+  ['empId','empName','empDept','empDOJ'].forEach(id=>document.getElementById(id).value="");
+  document.getElementById('empFormTitle').textContent = "Add Employee";
+}
+
+function deleteEmployee(id){
+  if(!confirm("Delete this employee and all their leave records?")) return;
+  db.employees = db.employees.filter(e=>e.id!==id);
+  db.leaves = db.leaves.filter(l=>l.empId!==id);
+  saveDB(); renderAll();
+  toast("Employee deleted");
+}
+
+/* ---------- Leave ---------- */
+function leaveDaysForRecord(rec){
+  return dateRange(rec.from, rec.to).filter(d=>!isHoliday(d)).length;
+}
+
+function leaveTakenCount(empId, year, type){
+  let count = 0;
+  db.leaves.forEach(l=>{
+    if(l.empId!==empId) return;
+    if(type && l.type!==type) return;
+    dateRange(l.from,l.to).forEach(d=>{
+      if(yearOf(d)===String(year) && !isHoliday(d)) count += 1;
+    });
+  });
+  return count;
+}
+
+function leaveTakenInMonth(empId, year, month, type){
+  let count = 0;
+  db.leaves.forEach(l=>{
+    if(l.empId!==empId) return;
+    if(type && l.type!==type) return;
+    dateRange(l.from,l.to).forEach(d=>{
+      if(d.slice(0,4)===String(year) && Number(d.slice(5,7))===month && !isHoliday(d)) count += 1;
+    });
+  });
+  return count;
+}
+
+function addLeave(){
+  const empId = document.getElementById('lvEmp').value;
+  const from = document.getElementById('lvFrom').value;
+  const to = document.getElementById('lvTo').value || from;
+  const type = document.getElementById('lvType').value;
+  const reason = document.getElementById('lvReason').value.trim();
+  if(!empId){ toast("Add an employee first"); return; }
+  if(!from){ toast("Pick a from date"); return; }
+  if(new Date(to) < new Date(from)){ toast("To date must be after From date"); return; }
+  const rec = { id: Date.now().toString(36), empId, from, to, type, reason };
+  db.leaves.push(rec);
+  db.leaves.sort((a,b)=>b.from.localeCompare(a.from));
+  saveDB();
+  document.getElementById('lvFrom').value = "";
+  document.getElementById('lvTo').value = "";
+  document.getElementById('lvReason').value = "";
+  renderAll();
+  toast("Leave recorded");
+}
+
+function deleteLeave(id){
+  db.leaves = db.leaves.filter(l=>l.id!==id);
+  saveDB(); renderAll();
+}
+
+function renderLeaveDropdown(){
+  const sel = document.getElementById('lvEmp');
+  const cur = sel.value;
+  sel.innerHTML = db.employees.map(e=>`<option value="${e.id}">${e.name} (${e.id})</option>`).join('');
+  if(cur) sel.value = cur;
+}
+
+function renderLeaveRecords(){
+  const tbody = document.getElementById('lvTable');
+  document.getElementById('lvCount').textContent = db.leaves.length;
+  if(db.leaves.length===0){
+    tbody.innerHTML = '<tr><td colspan="7" class="empty">No leave recorded yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = db.leaves.map(l=>{
+    const emp = db.employees.find(e=>e.id===l.empId);
+    const days = leaveDaysForRecord(l);
+    const cls = l.type==="Earned" ? "b-earned" : "b-other";
+    return `<tr>
+      <td>${emp?emp.name:l.empId}</td><td>${fmtDate(l.from)}</td><td>${fmtDate(l.to)}</td>
+      <td><span class="badge ${cls}">${l.type==="Earned"?"Earned Leave":"Other"}</span></td>
+      <td>${days}</td><td>${l.reason||'-'}</td>
+      <td><button class="icon-btn del" onclick="deleteLeave('${l.id}')">Delete</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderEmployeesTable(){
+  const tbody = document.getElementById('empTable');
+  const year = document.getElementById('leaveYear').value || new Date().getFullYear();
+  document.getElementById('empCount').textContent = db.employees.length;
+  if(db.employees.length===0){
+    tbody.innerHTML = '<tr><td colspan="6" class="empty">No employees added yet. Add your first employee above.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = db.employees.map(e=>{
+    const taken = leaveTakenCount(e.id, year, "Earned");
+    const bal = (db.elQuota||20) - taken;
+    return `<tr>
+      <td>${e.id}</td><td>${e.name}</td><td>${e.dept||'-'}</td><td>${e.doj?fmtDate(e.doj):'-'}</td>
+      <td>${bal}</td>
+      <td>
+        <button class="icon-btn edit" onclick="editEmployee('${e.id}')">Edit</button>
+        <button class="icon-btn del" onclick="deleteEmployee('${e.id}')">Delete</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function setQuota(){
+  db.elQuota = parseFloat(document.getElementById('elQuota').value) || 20;
+  saveDB(); renderAll();
+}
+
+function renderLeaveBalance(){
+  document.getElementById('elQuota').value = db.elQuota || 20;
+  if(!document.getElementById('leaveYear').value) document.getElementById('leaveYear').value = new Date().getFullYear();
+  const year = document.getElementById('leaveYear').value;
+  const tbody = document.getElementById('leaveTable');
+  if(db.employees.length===0){
+    tbody.innerHTML = '<tr><td colspan="6" class="empty">No employees added yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = db.employees.map(e=>{
+    const taken = leaveTakenCount(e.id, year, "Earned");
+    const quota = db.elQuota || 20;
+    const bal = quota - taken;
+    const pct = Math.min(100, Math.round((taken/quota)*100));
+    return `<tr>
+      <td>${e.id}</td><td>${e.name}</td><td>${quota}</td><td>${taken}</td>
+      <td style="font-weight:700;color:${bal<0?'var(--red)':'var(--green)'}">${bal}</td>
+      <td style="min-width:120px"><div class="bar"><div class="bar-fill" style="width:${pct}%;background:${pct>=90?'var(--red)':'var(--primary)'}"></div></div></td>
+    </tr>`;
+  }).join('');
+}
+
+/* ---------- Holidays ---------- */
+function addHoliday(){
+  const date = document.getElementById('holDate').value;
+  const name = document.getElementById('holName').value.trim();
+  if(!date || !name){ toast("Enter date and holiday name"); return; }
+  if(db.holidays.some(h=>h.date===date)){ toast("A holiday already exists on this date"); return; }
+  db.holidays.push({date, name});
+  db.holidays.sort((a,b)=>a.date.localeCompare(b.date));
+  saveDB();
+  document.getElementById('holDate').value = "";
+  document.getElementById('holName').value = "";
+  renderAll();
+  toast("Holiday added");
+}
+
+function deleteHoliday(date){
+  db.holidays = db.holidays.filter(h=>h.date!==date);
+  saveDB(); renderAll();
+}
+
+function renderHolidays(){
+  const tbody = document.getElementById('holTable');
+  const year = new Date().getFullYear();
+  const list = db.holidays;
+  document.getElementById('holCount').textContent = list.filter(h=>yearOf(h.date)===String(year)).length;
+  if(list.length===0){
+    tbody.innerHTML = '<tr><td colspan="4" class="empty">No public holidays added yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = list.map(h=>`<tr>
+    <td>${fmtDate(h.date)}</td><td>${dayName(h.date)}</td><td>${h.name}</td>
+    <td><button class="icon-btn del" onclick="deleteHoliday('${h.date}')">Delete</button></td>
+  </tr>`).join('');
+}
+
+/* ---------- Dashboard ---------- */
+function renderDashboard(){
+  document.getElementById('todayLabel').textContent = new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  const today = todayStr();
+  const total = db.employees.length;
+
+  const onLeaveToday = db.leaves.filter(l=>today>=l.from && today<=l.to && !isHoliday(today));
+  const year = new Date().getFullYear();
+  let lowBalance = 0;
+  db.employees.forEach(e=>{
+    const bal = (db.elQuota||20) - leaveTakenCount(e.id, year, "Earned");
+    if(bal <= 2) lowBalance++;
+  });
+
+  const cards = [
+    {label:"Total Employees", value: total, cls:"blue"},
+    {label:"On Leave Today", value: onLeaveToday.length, cls:"amber"},
+    {label:"Public Holidays This Year", value: db.holidays.filter(h=>yearOf(h.date)===String(year)).length, cls:"green"},
+    {label:"Low Leave Balance (≤2 days)", value: lowBalance, cls:"red"},
+  ];
+  document.getElementById('dashCards').innerHTML = cards.map(c=>
+    `<div class="card ${c.cls}"><div class="label">${c.label}</div><div class="value">${c.value}</div></div>`).join('');
+
+  const tbody = document.getElementById('dashToday');
+  if(onLeaveToday.length===0){
+    tbody.innerHTML = '<tr><td colspan="5" class="empty">No one is on leave today.</td></tr>';
+  } else {
+    tbody.innerHTML = onLeaveToday.map(l=>{
+      const emp = db.employees.find(e=>e.id===l.empId);
+      const cls = l.type==="Earned" ? "b-earned" : "b-other";
+      return `<tr><td>${emp?emp.name:l.empId}</td><td>${emp?emp.dept:'-'}</td><td><span class="badge ${cls}">${l.type==="Earned"?"Earned Leave":"Other"}</span></td><td>${fmtDate(l.from)} - ${fmtDate(l.to)}</td><td>${l.reason||'-'}</td></tr>`;
+    }).join('');
+  }
+
+  const upcoming = db.holidays.filter(h=>h.date>=today).slice(0,5);
+  const htbody = document.getElementById('dashHolidays');
+  htbody.innerHTML = upcoming.length ? upcoming.map(h=>`<tr><td>${fmtDate(h.date)}</td><td>${h.name}</td></tr>`).join('')
+    : '<tr><td colspan="2" class="empty">No upcoming holidays listed.</td></tr>';
+}
+
+/* ---------- Reports ---------- */
+function renderReport(){
+  const monthVal = document.getElementById('repMonth').value; // YYYY-MM
+  if(!monthVal){ toast("Pick a month first"); return; }
+  const [y,m] = monthVal.split('-').map(Number);
+  const tbody = document.getElementById('repTable');
+  if(db.employees.length===0){
+    tbody.innerHTML = '<tr><td colspan="5" class="empty">No employees yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = db.employees.map(e=>{
+    const earnedMonth = leaveTakenInMonth(e.id, y, m, "Earned");
+    const otherMonth = leaveTakenInMonth(e.id, y, m, "Other");
+    const yearBal = (db.elQuota||20) - leaveTakenCount(e.id, y, "Earned");
+    return `<tr>
+      <td>${e.id}</td><td>${e.name}</td><td>${earnedMonth}</td><td>${otherMonth}</td><td>${yearBal}</td>
+    </tr>`;
+  }).join('');
+}
+
+/* ---------- Excel Export/Import ---------- */
+function buildWorkbook(){
+  const wb = XLSX.utils.book_new();
+
+  const empSheet = XLSX.utils.json_to_sheet(db.employees.map(e=>({
+    "Employee ID": e.id, "Name": e.name, "Department": e.dept, "Date of Joining": e.doj
+  })));
+  XLSX.utils.book_append_sheet(wb, empSheet, "Employees");
+
+  const leaveRows = db.leaves.map(l=>{
+    const emp = db.employees.find(e=>e.id===l.empId);
+    return {
+      "Employee ID": l.empId, "Name": emp?emp.name:l.empId, "From": l.from, "To": l.to,
+      "Type": l.type, "Days": leaveDaysForRecord(l), "Reason": l.reason||""
+    };
+  });
+  const leaveSheet = XLSX.utils.json_to_sheet(leaveRows);
+  XLSX.utils.book_append_sheet(wb, leaveSheet, "Leave Records");
+
+  const holSheet = XLSX.utils.json_to_sheet(db.holidays.map(h=>({Date:h.date, "Holiday Name":h.name})));
+  XLSX.utils.book_append_sheet(wb, holSheet, "Public Holidays");
+
+  const year = document.getElementById('leaveYear') ? (document.getElementById('leaveYear').value || new Date().getFullYear()) : new Date().getFullYear();
+  const balSheet = XLSX.utils.json_to_sheet(db.employees.map(e=>{
+    const taken = leaveTakenCount(e.id, year, "Earned");
+    return { "Employee ID": e.id, Name: e.name, "Earned Leave Quota": db.elQuota||20, "Leave Taken": taken, "Leave Balance": (db.elQuota||20)-taken };
+  }));
+  XLSX.utils.book_append_sheet(wb, balSheet, "Leave Balance");
+
+  return wb;
+}
+
+function exportExcel(){
+  const wb = buildWorkbook();
+  XLSX.writeFile(wb, `Leave_Export_${todayStr()}.xlsx`);
+  toast("Exported to Excel");
+}
+
+function importExcel(){ document.getElementById('importFile').click(); }
+
+function handleImport(evt){
+  const file = evt.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e){
+    try{
+      const wb = XLSX.read(new Uint8Array(e.target.result), {type:"array"});
+
+      if(wb.SheetNames.includes("Employees")){
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets["Employees"]);
+        db.employees = rows.map(r=>({
+          id: String(r["Employee ID"]||"").trim(),
+          name: String(r["Name"]||"").trim(),
+          dept: String(r["Department"]||"").trim(),
+          doj: r["Date of Joining"] ? String(r["Date of Joining"]) : ""
+        })).filter(e=>e.id);
+      }
+      if(wb.SheetNames.includes("Leave Records")){
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets["Leave Records"]);
+        db.leaves = rows.map(r=>({
+          id: Date.now().toString(36)+Math.random().toString(36).slice(2,7),
+          empId: String(r["Employee ID"]||"").trim(),
+          from: String(r["From"]||""), to: String(r["To"]||r["From"]||""),
+          type: String(r["Type"]||"Earned"), reason: String(r["Reason"]||"")
+        })).filter(l=>l.empId && l.from);
+      }
+      if(wb.SheetNames.includes("Public Holidays")){
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets["Public Holidays"]);
+        db.holidays = rows.map(r=>({date:String(r["Date"]), name:String(r["Holiday Name"]||"")})).filter(h=>h.date);
+      }
+      if(wb.SheetNames.includes("Leave Balance")){
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets["Leave Balance"]);
+        if(rows.length && rows[0]["Earned Leave Quota"]) db.elQuota = Number(rows[0]["Earned Leave Quota"]) || 20;
+      }
+      saveDB();
+      renderAll();
+      toast("Data imported successfully");
+    } catch(err){
+      toast("Import failed: "+err.message);
+    }
+    evt.target.value = "";
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+/* ---------- GitHub Sync ---------- */
+function arrayBufferToBase64(buf){
+  let binary = '';
+  const bytes = new Uint8Array(buf);
+  const chunk = 0x8000;
+  for(let i=0;i<bytes.length;i+=chunk){
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i+chunk));
+  }
+  return btoa(binary);
+}
+
+function setSyncStatus(state, detail){
+  const el = document.getElementById('syncStatus');
+  const dotCls = state==='ok' ? 'sync-ok' : state==='err' ? 'sync-err' : 'sync-off';
+  const label = state==='ok' ? 'Synced to GitHub' : state==='err' ? 'GitHub sync error' : 'GitHub sync not connected';
+  el.innerHTML = `<span class="sync-dot ${dotCls}"></span>${label}`;
+  const d = document.getElementById('syncDetail');
+  if(d) d.textContent = detail || '';
+}
+
+function saveGithubSettings(){
+  ghSession.token = document.getElementById('ghToken').value.trim();
+  ghSession.owner = document.getElementById('ghOwner').value.trim();
+  ghSession.repo = document.getElementById('ghRepo').value.trim();
+  ghSession.branch = document.getElementById('ghBranch').value.trim() || 'main';
+  ghSession.path = document.getElementById('ghPath').value.trim() || 'data/leave-data.xlsx';
+  if(!ghSession.token || !ghSession.owner || !ghSession.repo){
+    toast("Owner, repo, and token are required");
+    return;
+  }
+  ghSession.connected = true;
+  toast("GitHub settings saved for this session");
+  syncNow();
+}
+
+let syncTimer = null;
+function scheduleSync(){
+  if(!ghSession.connected) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(()=>pushToGithub(), 2500);
+}
+
+function syncNow(){
+  if(!ghSession.token || !ghSession.owner || !ghSession.repo){
+    toast("Enter GitHub settings and token first");
+    return;
+  }
+  ghSession.connected = true;
+  pushToGithub();
+}
+
+async function pushToGithub(){
+  if(!ghSession.token) return;
+  setSyncStatus('pending', 'Syncing...');
+  try{
+    const wb = buildWorkbook();
+    const wbout = XLSX.write(wb, {bookType:'xlsx', type:'array'});
+    const base64 = arrayBufferToBase64(wbout);
+    const apiUrl = `https://api.github.com/repos/${ghSession.owner}/${ghSession.repo}/contents/${ghSession.path}`;
+
+    let sha;
+    const getResp = await fetch(`${apiUrl}?ref=${encodeURIComponent(ghSession.branch)}`, {
+      headers:{ Authorization:`token ${ghSession.token}`, Accept:'application/vnd.github+json' }
+    });
+    if(getResp.ok){ const j = await getResp.json(); sha = j.sha; }
+    else if(getResp.status !== 404){
+      const j = await getResp.json().catch(()=>({}));
+      throw new Error(j.message || `GET failed (${getResp.status})`);
+    }
+
+    const body = {
+      message: `Update leave data - ${new Date().toISOString()}`,
+      content: base64,
+      branch: ghSession.branch
+    };
+    if(sha) body.sha = sha;
+
+    const putResp = await fetch(apiUrl, {
+      method:'PUT',
+      headers:{ Authorization:`token ${ghSession.token}`, Accept:'application/vnd.github+json', 'Content-Type':'application/json' },
+      body: JSON.stringify(body)
+    });
+    if(!putResp.ok){
+      const j = await putResp.json().catch(()=>({}));
+      throw new Error(j.message || `Push failed (${putResp.status})`);
+    }
+    setSyncStatus('ok', `Last synced ${new Date().toLocaleTimeString()}`);
+  } catch(err){
+    setSyncStatus('err', err.message);
+  }
+}
+
+/* ---------- Render All ---------- */
+function renderAll(){
+  renderEmployeesTable();
+  renderLeaveDropdown();
+  renderLeaveRecords();
+  renderLeaveBalance();
+  renderHolidays();
+  renderDashboard();
+}
+
+document.getElementById('leaveYear').value = new Date().getFullYear();
+document.getElementById('repMonth').value = todayStr().slice(0,7);
+renderAll();
+</script>
+</body>
+</html>
