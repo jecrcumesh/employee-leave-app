@@ -59,6 +59,8 @@
   tr:hover td{background:#fafcff;}
   .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600;}
   .b-earned{background:#fef3c7;color:#92400e;}
+  .b-sick{background:#fee2e2;color:#991b1b;}
+  .b-compoff{background:#dcfce7;color:#166534;}
   .b-other{background:#e0e7ff;color:#3730a3;}
   .icon-btn{background:none;padding:5px 9px;border-radius:6px;font-size:13px;}
   .icon-btn.edit{color:var(--primary);}
@@ -157,13 +159,29 @@
         <div class="field"><label>Leave Type</label>
           <select id="lvType">
             <option value="Earned">Earned Leave</option>
+            <option value="Sick">Sick Leave</option>
+            <option value="CompOff">Comp Off</option>
             <option value="Other">Other / Unpaid (not deducted)</option>
           </select>
         </div>
         <div class="field" style="flex:1;min-width:200px"><label>Reason (optional)</label><input id="lvReason" placeholder="e.g. Family function"></div>
         <button class="btn-primary" style="background:var(--primary);color:#fff" onclick="addLeave()">Record Leave</button>
       </div>
-      <p style="color:var(--muted);font-size:13px;margin:0">Dates that fall on a listed public holiday are automatically excluded from the leave day count.</p>
+      <p style="color:var(--muted);font-size:13px;margin:0">Dates that fall on a listed public holiday are automatically excluded from the leave day count. Comp Off leave is deducted from credited Comp Off days below.</p>
+    </div>
+    <div class="panel">
+      <h2>Credit Comp Off</h2>
+      <div class="row">
+        <div class="field"><label>Employee</label><select id="coEmp"></select></div>
+        <div class="field"><label>Date Worked</label><input id="coDate" type="date"></div>
+        <div class="field"><label>Days Credited</label><input id="coDays" type="number" step="0.5" value="1" style="width:100px"></div>
+        <div class="field" style="flex:1;min-width:200px"><label>Reason (optional)</label><input id="coReason" placeholder="e.g. Worked on Sunday"></div>
+        <button class="btn-primary" style="background:var(--primary);color:#fff" onclick="addCompOffCredit()">Credit Comp Off</button>
+      </div>
+      <table>
+        <thead><tr><th>Employee</th><th>Date Worked</th><th>Days Credited</th><th>Reason</th><th></th></tr></thead>
+        <tbody id="coTable"></tbody>
+      </table>
     </div>
     <div class="panel">
       <h2>Leave Records (<span id="lvCount">0</span>)</h2>
@@ -177,17 +195,30 @@
   <!-- LEAVE BALANCE -->
   <div class="page" id="page-leave">
     <div class="panel">
-      <h2>Earned Leave Policy</h2>
+      <h2>Leave Policy</h2>
       <div class="row" style="align-items:center">
         <div class="field"><label>Annual Earned Leave Quota (days/employee/year)</label><input id="elQuota" type="number" value="20" style="width:100px" onchange="setQuota()"></div>
+        <div class="field"><label>Annual Sick Leave Quota (days/employee/year)</label><input id="slQuota" type="number" value="10" style="width:100px" onchange="setQuota()"></div>
         <div class="field"><label>Leave Year</label><input id="leaveYear" type="number" style="width:100px" onchange="renderAll()"></div>
       </div>
-      <p style="color:var(--muted);font-size:13px;margin:0">Public holidays are tracked separately and never consume Earned Leave.</p>
+      <p style="color:var(--muted);font-size:13px;margin:0">Public holidays are tracked separately and never consume leave. Comp Off has no fixed annual quota — it accrues from credits recorded on the Apply Leave tab.</p>
     </div>
     <div class="panel">
       <h2>Employee Leave Balance</h2>
       <table>
-        <thead><tr><th>ID</th><th>Name</th><th>Allotted</th><th>Taken</th><th>Balance</th><th>Usage</th></tr></thead>
+        <thead>
+          <tr>
+            <th rowspan="2">ID</th><th rowspan="2">Name</th>
+            <th colspan="3" style="text-align:center">Earned Leave</th>
+            <th colspan="3" style="text-align:center">Sick Leave</th>
+            <th colspan="3" style="text-align:center">Comp Off</th>
+          </tr>
+          <tr>
+            <th>Allotted</th><th>Taken</th><th>Balance</th>
+            <th>Allotted</th><th>Taken</th><th>Balance</th>
+            <th>Credited</th><th>Taken</th><th>Balance</th>
+          </tr>
+        </thead>
         <tbody id="leaveTable"></tbody>
       </table>
     </div>
@@ -218,7 +249,7 @@
         <button class="btn-primary" style="background:var(--primary);color:#fff" onclick="renderReport()">Generate</button>
       </div>
       <table>
-        <thead><tr><th>ID</th><th>Name</th><th>Earned Leave Taken (Month)</th><th>Other Leave Taken (Month)</th><th>Earned Leave Balance (Year)</th></tr></thead>
+        <thead><tr><th>ID</th><th>Name</th><th>Earned (Month)</th><th>Sick (Month)</th><th>Comp Off (Month)</th><th>Other (Month)</th><th>Earned Balance (Year)</th><th>Sick Balance (Year)</th><th>Comp Off Balance</th></tr></thead>
         <tbody id="repTable"></tbody>
       </table>
     </div>
@@ -271,8 +302,22 @@ let ghSession = { token: "", owner: "", repo: "", branch: "main", path: "data/le
 
 function loadDB(){
   const raw = localStorage.getItem(STORE_KEY);
-  if(raw){ try { return JSON.parse(raw); } catch(e){} }
-  return { employees: [], leaves: [], holidays: [], elQuota: 20 };
+  if(raw){
+    try {
+      const parsed = JSON.parse(raw);
+      if(parsed.slQuota === undefined) parsed.slQuota = 10;
+      if(!parsed.compOffCredits) parsed.compOffCredits = [];
+      return parsed;
+    } catch(e){}
+  }
+  return { employees: [], leaves: [], holidays: [], elQuota: 20, slQuota: 10, compOffCredits: [] };
+}
+
+function leaveTypeMeta(type){
+  if(type==="Earned") return {cls:"b-earned", label:"Earned Leave"};
+  if(type==="Sick") return {cls:"b-sick", label:"Sick Leave"};
+  if(type==="CompOff") return {cls:"b-compoff", label:"Comp Off"};
+  return {cls:"b-other", label:"Other"};
 }
 function saveDB(){
   localStorage.setItem(STORE_KEY, JSON.stringify(db));
@@ -367,6 +412,7 @@ function deleteEmployee(id){
   if(!confirm("Delete this employee and all their leave records?")) return;
   db.employees = db.employees.filter(e=>e.id!==id);
   db.leaves = db.leaves.filter(l=>l.empId!==id);
+  db.compOffCredits = db.compOffCredits.filter(c=>c.empId!==id);
   saveDB(); renderAll();
   toast("Employee deleted");
 }
@@ -426,10 +472,13 @@ function deleteLeave(id){
 }
 
 function renderLeaveDropdown(){
-  const sel = document.getElementById('lvEmp');
-  const cur = sel.value;
-  sel.innerHTML = db.employees.map(e=>`<option value="${e.id}">${e.name} (${e.id})</option>`).join('');
-  if(cur) sel.value = cur;
+  ['lvEmp','coEmp'].forEach(selId=>{
+    const sel = document.getElementById(selId);
+    if(!sel) return;
+    const cur = sel.value;
+    sel.innerHTML = db.employees.map(e=>`<option value="${e.id}">${e.name} (${e.id})</option>`).join('');
+    if(cur) sel.value = cur;
+  });
 }
 
 function renderLeaveRecords(){
@@ -442,12 +491,61 @@ function renderLeaveRecords(){
   tbody.innerHTML = db.leaves.map(l=>{
     const emp = db.employees.find(e=>e.id===l.empId);
     const days = leaveDaysForRecord(l);
-    const cls = l.type==="Earned" ? "b-earned" : "b-other";
+    const meta = leaveTypeMeta(l.type);
     return `<tr>
       <td>${emp?emp.name:l.empId}</td><td>${fmtDate(l.from)}</td><td>${fmtDate(l.to)}</td>
-      <td><span class="badge ${cls}">${l.type==="Earned"?"Earned Leave":"Other"}</span></td>
+      <td><span class="badge ${meta.cls}">${meta.label}</span></td>
       <td>${days}</td><td>${l.reason||'-'}</td>
       <td><button class="icon-btn del" onclick="deleteLeave('${l.id}')">Delete</button></td>
+    </tr>`;
+  }).join('');
+}
+
+/* ---------- Comp Off Credits ---------- */
+function addCompOffCredit(){
+  const empId = document.getElementById('coEmp').value;
+  const date = document.getElementById('coDate').value;
+  const days = parseFloat(document.getElementById('coDays').value) || 1;
+  const reason = document.getElementById('coReason').value.trim();
+  if(!empId){ toast("Add an employee first"); return; }
+  if(!date){ toast("Pick the date worked"); return; }
+  db.compOffCredits.push({ id: Date.now().toString(36), empId, date, days, reason });
+  db.compOffCredits.sort((a,b)=>b.date.localeCompare(a.date));
+  saveDB();
+  document.getElementById('coDate').value = "";
+  document.getElementById('coDays').value = "1";
+  document.getElementById('coReason').value = "";
+  renderAll();
+  toast("Comp Off credited");
+}
+
+function deleteCompOffCredit(id){
+  db.compOffCredits = db.compOffCredits.filter(c=>c.id!==id);
+  saveDB(); renderAll();
+}
+
+function compOffCredited(empId, year){
+  return db.compOffCredits
+    .filter(c=>c.empId===empId && (!year || yearOf(c.date)===String(year)))
+    .reduce((sum,c)=>sum+c.days, 0);
+}
+
+function compOffBalance(empId, year){
+  return compOffCredited(empId, year) - leaveTakenCount(empId, year, "CompOff");
+}
+
+function renderCompOffCredits(){
+  const tbody = document.getElementById('coTable');
+  if(!tbody) return;
+  if(db.compOffCredits.length===0){
+    tbody.innerHTML = '<tr><td colspan="5" class="empty">No Comp Off credited yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = db.compOffCredits.map(c=>{
+    const emp = db.employees.find(e=>e.id===c.empId);
+    return `<tr>
+      <td>${emp?emp.name:c.empId}</td><td>${fmtDate(c.date)}</td><td>${c.days}</td><td>${c.reason||'-'}</td>
+      <td><button class="icon-btn del" onclick="deleteCompOffCredit('${c.id}')">Delete</button></td>
     </tr>`;
   }).join('');
 }
@@ -476,27 +574,36 @@ function renderEmployeesTable(){
 
 function setQuota(){
   db.elQuota = parseFloat(document.getElementById('elQuota').value) || 20;
+  db.slQuota = parseFloat(document.getElementById('slQuota').value) || 10;
   saveDB(); renderAll();
 }
 
 function renderLeaveBalance(){
   document.getElementById('elQuota').value = db.elQuota || 20;
+  document.getElementById('slQuota').value = db.slQuota===undefined ? 10 : db.slQuota;
   if(!document.getElementById('leaveYear').value) document.getElementById('leaveYear').value = new Date().getFullYear();
   const year = document.getElementById('leaveYear').value;
   const tbody = document.getElementById('leaveTable');
   if(db.employees.length===0){
-    tbody.innerHTML = '<tr><td colspan="6" class="empty">No employees added yet.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11" class="empty">No employees added yet.</td></tr>';
     return;
   }
+  const elQuota = db.elQuota || 20;
+  const slQuota = db.slQuota===undefined ? 10 : db.slQuota;
   tbody.innerHTML = db.employees.map(e=>{
-    const taken = leaveTakenCount(e.id, year, "Earned");
-    const quota = db.elQuota || 20;
-    const bal = quota - taken;
-    const pct = Math.min(100, Math.round((taken/quota)*100));
+    const elTaken = leaveTakenCount(e.id, year, "Earned");
+    const elBal = elQuota - elTaken;
+    const slTaken = leaveTakenCount(e.id, year, "Sick");
+    const slBal = slQuota - slTaken;
+    const coCredited = compOffCredited(e.id, year);
+    const coTaken = leaveTakenCount(e.id, year, "CompOff");
+    const coBal = coCredited - coTaken;
+    const balColor = b => b<0 ? 'var(--red)' : 'var(--green)';
     return `<tr>
-      <td>${e.id}</td><td>${e.name}</td><td>${quota}</td><td>${taken}</td>
-      <td style="font-weight:700;color:${bal<0?'var(--red)':'var(--green)'}">${bal}</td>
-      <td style="min-width:120px"><div class="bar"><div class="bar-fill" style="width:${pct}%;background:${pct>=90?'var(--red)':'var(--primary)'}"></div></div></td>
+      <td>${e.id}</td><td>${e.name}</td>
+      <td>${elQuota}</td><td>${elTaken}</td><td style="font-weight:700;color:${balColor(elBal)}">${elBal}</td>
+      <td>${slQuota}</td><td>${slTaken}</td><td style="font-weight:700;color:${balColor(slBal)}">${slBal}</td>
+      <td>${coCredited}</td><td>${coTaken}</td><td style="font-weight:700;color:${balColor(coBal)}">${coBal}</td>
     </tr>`;
   }).join('');
 }
@@ -565,8 +672,8 @@ function renderDashboard(){
   } else {
     tbody.innerHTML = onLeaveToday.map(l=>{
       const emp = db.employees.find(e=>e.id===l.empId);
-      const cls = l.type==="Earned" ? "b-earned" : "b-other";
-      return `<tr><td>${emp?emp.name:l.empId}</td><td>${emp?emp.dept:'-'}</td><td><span class="badge ${cls}">${l.type==="Earned"?"Earned Leave":"Other"}</span></td><td>${fmtDate(l.from)} - ${fmtDate(l.to)}</td><td>${l.reason||'-'}</td></tr>`;
+      const meta = leaveTypeMeta(l.type);
+      return `<tr><td>${emp?emp.name:l.empId}</td><td>${emp?emp.dept:'-'}</td><td><span class="badge ${meta.cls}">${meta.label}</span></td><td>${fmtDate(l.from)} - ${fmtDate(l.to)}</td><td>${l.reason||'-'}</td></tr>`;
     }).join('');
   }
 
@@ -588,10 +695,15 @@ function renderReport(){
   }
   tbody.innerHTML = db.employees.map(e=>{
     const earnedMonth = leaveTakenInMonth(e.id, y, m, "Earned");
+    const sickMonth = leaveTakenInMonth(e.id, y, m, "Sick");
+    const compOffMonth = leaveTakenInMonth(e.id, y, m, "CompOff");
     const otherMonth = leaveTakenInMonth(e.id, y, m, "Other");
-    const yearBal = (db.elQuota||20) - leaveTakenCount(e.id, y, "Earned");
+    const earnedBal = (db.elQuota||20) - leaveTakenCount(e.id, y, "Earned");
+    const sickBal = (db.slQuota===undefined?10:db.slQuota) - leaveTakenCount(e.id, y, "Sick");
+    const coBal = compOffBalance(e.id, y);
     return `<tr>
-      <td>${e.id}</td><td>${e.name}</td><td>${earnedMonth}</td><td>${otherMonth}</td><td>${yearBal}</td>
+      <td>${e.id}</td><td>${e.name}</td><td>${earnedMonth}</td><td>${sickMonth}</td><td>${compOffMonth}</td><td>${otherMonth}</td>
+      <td>${earnedBal}</td><td>${sickBal}</td><td>${coBal}</td>
     </tr>`;
   }).join('');
 }
@@ -618,10 +730,26 @@ function buildWorkbook(){
   const holSheet = XLSX.utils.json_to_sheet(db.holidays.map(h=>({Date:h.date, "Holiday Name":h.name})));
   XLSX.utils.book_append_sheet(wb, holSheet, "Public Holidays");
 
+  const coRows = db.compOffCredits.map(c=>{
+    const emp = db.employees.find(e=>e.id===c.empId);
+    return { "Employee ID": c.empId, Name: emp?emp.name:c.empId, "Date Worked": c.date, "Days Credited": c.days, "Reason": c.reason||"" };
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(coRows), "Comp Off Credits");
+
   const year = document.getElementById('leaveYear') ? (document.getElementById('leaveYear').value || new Date().getFullYear()) : new Date().getFullYear();
+  const elQuota = db.elQuota||20;
+  const slQuota = db.slQuota===undefined?10:db.slQuota;
   const balSheet = XLSX.utils.json_to_sheet(db.employees.map(e=>{
-    const taken = leaveTakenCount(e.id, year, "Earned");
-    return { "Employee ID": e.id, Name: e.name, "Earned Leave Quota": db.elQuota||20, "Leave Taken": taken, "Leave Balance": (db.elQuota||20)-taken };
+    const elTaken = leaveTakenCount(e.id, year, "Earned");
+    const slTaken = leaveTakenCount(e.id, year, "Sick");
+    const coCredited = compOffCredited(e.id, year);
+    const coTaken = leaveTakenCount(e.id, year, "CompOff");
+    return {
+      "Employee ID": e.id, Name: e.name,
+      "Earned Leave Quota": elQuota, "Earned Leave Taken": elTaken, "Earned Leave Balance": elQuota-elTaken,
+      "Sick Leave Quota": slQuota, "Sick Leave Taken": slTaken, "Sick Leave Balance": slQuota-slTaken,
+      "Comp Off Credited": coCredited, "Comp Off Taken": coTaken, "Comp Off Balance": coCredited-coTaken
+    };
   }));
   XLSX.utils.book_append_sheet(wb, balSheet, "Leave Balance");
 
@@ -666,9 +794,20 @@ function handleImport(evt){
         const rows = XLSX.utils.sheet_to_json(wb.Sheets["Public Holidays"]);
         db.holidays = rows.map(r=>({date:String(r["Date"]), name:String(r["Holiday Name"]||"")})).filter(h=>h.date);
       }
+      if(wb.SheetNames.includes("Comp Off Credits")){
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets["Comp Off Credits"]);
+        db.compOffCredits = rows.map(r=>({
+          id: Date.now().toString(36)+Math.random().toString(36).slice(2,7),
+          empId: String(r["Employee ID"]||"").trim(),
+          date: String(r["Date Worked"]||""),
+          days: Number(r["Days Credited"]) || 1,
+          reason: String(r["Reason"]||"")
+        })).filter(c=>c.empId && c.date);
+      }
       if(wb.SheetNames.includes("Leave Balance")){
         const rows = XLSX.utils.sheet_to_json(wb.Sheets["Leave Balance"]);
         if(rows.length && rows[0]["Earned Leave Quota"]) db.elQuota = Number(rows[0]["Earned Leave Quota"]) || 20;
+        if(rows.length && rows[0]["Sick Leave Quota"]) db.slQuota = Number(rows[0]["Sick Leave Quota"]) || 10;
       }
       saveDB();
       renderAll();
@@ -778,6 +917,7 @@ function renderAll(){
   renderEmployeesTable();
   renderLeaveDropdown();
   renderLeaveRecords();
+  renderCompOffCredits();
   renderLeaveBalance();
   renderHolidays();
   renderDashboard();
