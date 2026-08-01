@@ -273,9 +273,11 @@
           <input id="ghToken" type="password" placeholder="Paste token here for this session only">
         </div>
         <button class="btn-primary" style="background:var(--primary);color:#fff" onclick="saveGithubSettings()">Save For This Session</button>
+        <button class="btn-ghost" style="background:#e2e8f0;color:#1e293b" onclick="loadFromGithub()">Load From GitHub</button>
         <button class="btn-ghost" style="background:#e2e8f0;color:#1e293b" onclick="syncNow()">Sync Now</button>
       </div>
       <p id="syncDetail" style="color:var(--muted);font-size:13px;margin:0"></p>
+      <div class="warn" style="margin-top:14px;margin-bottom:0">Important: this browser's data (not the Excel file) is the master copy while you're working. Every time you open the app on a <b>new device or a browser that has been cleared/inactive for a while</b>, click <b>Load From GitHub</b> first to pull in the existing data before making changes. The app blocks automatic syncing if it detects your local data looks empty while GitHub already has data — but always press Load From GitHub when in doubt.</div>
     </div>
     <div class="panel">
       <h3>How to set this up</h3>
@@ -283,8 +285,9 @@
         <li>Push this HTML file to a GitHub repository, then enable it under <b>Settings → Pages</b> to host it.</li>
         <li>Create a fine-grained token at <code>github.com/settings/personal-access-tokens/new</code>, scoped only to this repository, with <b>Contents: Read and write</b> permission.</li>
         <li>Enter the repo owner, repo name, branch, and a file path above (the Excel file will be created automatically the first time you sync).</li>
-        <li>Paste the token above and click <b>Sync Now</b>, or just keep working — the app auto-syncs a few seconds after every change, for as long as this browser tab stays open with the token entered.</li>
-        <li>Re-enter the token each time you reopen the app, since it is intentionally not saved anywhere.</li>
+        <li>Paste the token and click <b>Save For This Session</b> — if your browser has no local data yet, it will automatically pull in whatever is already saved on GitHub.</li>
+        <li>From then on the app auto-syncs a few seconds after every change, for as long as this browser tab stays open with the token entered. Re-enter the token each time you reopen the app, since it is intentionally not saved anywhere.</li>
+        <li>If you ever switch devices/browsers, always click <b>Load From GitHub</b> before entering new data, so you don't start from a blank slate.</li>
       </ol>
     </div>
   </div>
@@ -764,6 +767,46 @@ function exportExcel(){
 
 function importExcel(){ document.getElementById('importFile').click(); }
 
+function importWorkbook(wb){
+  if(wb.SheetNames.includes("Employees")){
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets["Employees"]);
+    db.employees = rows.map(r=>({
+      id: String(r["Employee ID"]||"").trim(),
+      name: String(r["Name"]||"").trim(),
+      dept: String(r["Department"]||"").trim(),
+      doj: r["Date of Joining"] ? String(r["Date of Joining"]) : ""
+    })).filter(e=>e.id);
+  }
+  if(wb.SheetNames.includes("Leave Records")){
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets["Leave Records"]);
+    db.leaves = rows.map(r=>({
+      id: Date.now().toString(36)+Math.random().toString(36).slice(2,7),
+      empId: String(r["Employee ID"]||"").trim(),
+      from: String(r["From"]||""), to: String(r["To"]||r["From"]||""),
+      type: String(r["Type"]||"Earned"), reason: String(r["Reason"]||"")
+    })).filter(l=>l.empId && l.from);
+  }
+  if(wb.SheetNames.includes("Public Holidays")){
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets["Public Holidays"]);
+    db.holidays = rows.map(r=>({date:String(r["Date"]), name:String(r["Holiday Name"]||"")})).filter(h=>h.date);
+  }
+  if(wb.SheetNames.includes("Comp Off Credits")){
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets["Comp Off Credits"]);
+    db.compOffCredits = rows.map(r=>({
+      id: Date.now().toString(36)+Math.random().toString(36).slice(2,7),
+      empId: String(r["Employee ID"]||"").trim(),
+      date: String(r["Date Worked"]||""),
+      days: Number(r["Days Credited"]) || 1,
+      reason: String(r["Reason"]||"")
+    })).filter(c=>c.empId && c.date);
+  }
+  if(wb.SheetNames.includes("Leave Balance")){
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets["Leave Balance"]);
+    if(rows.length && rows[0]["Earned Leave Quota"]) db.elQuota = Number(rows[0]["Earned Leave Quota"]) || 20;
+    if(rows.length && rows[0]["Sick Leave Quota"]) db.slQuota = Number(rows[0]["Sick Leave Quota"]) || 10;
+  }
+}
+
 function handleImport(evt){
   const file = evt.target.files[0];
   if(!file) return;
@@ -771,44 +814,7 @@ function handleImport(evt){
   reader.onload = function(e){
     try{
       const wb = XLSX.read(new Uint8Array(e.target.result), {type:"array"});
-
-      if(wb.SheetNames.includes("Employees")){
-        const rows = XLSX.utils.sheet_to_json(wb.Sheets["Employees"]);
-        db.employees = rows.map(r=>({
-          id: String(r["Employee ID"]||"").trim(),
-          name: String(r["Name"]||"").trim(),
-          dept: String(r["Department"]||"").trim(),
-          doj: r["Date of Joining"] ? String(r["Date of Joining"]) : ""
-        })).filter(e=>e.id);
-      }
-      if(wb.SheetNames.includes("Leave Records")){
-        const rows = XLSX.utils.sheet_to_json(wb.Sheets["Leave Records"]);
-        db.leaves = rows.map(r=>({
-          id: Date.now().toString(36)+Math.random().toString(36).slice(2,7),
-          empId: String(r["Employee ID"]||"").trim(),
-          from: String(r["From"]||""), to: String(r["To"]||r["From"]||""),
-          type: String(r["Type"]||"Earned"), reason: String(r["Reason"]||"")
-        })).filter(l=>l.empId && l.from);
-      }
-      if(wb.SheetNames.includes("Public Holidays")){
-        const rows = XLSX.utils.sheet_to_json(wb.Sheets["Public Holidays"]);
-        db.holidays = rows.map(r=>({date:String(r["Date"]), name:String(r["Holiday Name"]||"")})).filter(h=>h.date);
-      }
-      if(wb.SheetNames.includes("Comp Off Credits")){
-        const rows = XLSX.utils.sheet_to_json(wb.Sheets["Comp Off Credits"]);
-        db.compOffCredits = rows.map(r=>({
-          id: Date.now().toString(36)+Math.random().toString(36).slice(2,7),
-          empId: String(r["Employee ID"]||"").trim(),
-          date: String(r["Date Worked"]||""),
-          days: Number(r["Days Credited"]) || 1,
-          reason: String(r["Reason"]||"")
-        })).filter(c=>c.empId && c.date);
-      }
-      if(wb.SheetNames.includes("Leave Balance")){
-        const rows = XLSX.utils.sheet_to_json(wb.Sheets["Leave Balance"]);
-        if(rows.length && rows[0]["Earned Leave Quota"]) db.elQuota = Number(rows[0]["Earned Leave Quota"]) || 20;
-        if(rows.length && rows[0]["Sick Leave Quota"]) db.slQuota = Number(rows[0]["Sick Leave Quota"]) || 10;
-      }
+      importWorkbook(wb);
       saveDB();
       renderAll();
       toast("Data imported successfully");
@@ -852,14 +858,16 @@ function saveGithubSettings(){
   }
   ghSession.connected = true;
   toast("GitHub settings saved for this session");
-  syncNow();
+  if(isLocalDbEmpty()){
+    loadFromGithub();
+  }
 }
 
 let syncTimer = null;
 function scheduleSync(){
   if(!ghSession.connected) return;
   clearTimeout(syncTimer);
-  syncTimer = setTimeout(()=>pushToGithub(), 2500);
+  syncTimer = setTimeout(()=>pushToGithub(false), 2500);
 }
 
 function syncNow(){
@@ -868,47 +876,138 @@ function syncNow(){
     return;
   }
   ghSession.connected = true;
-  pushToGithub();
+  pushToGithub(true);
 }
 
-async function pushToGithub(){
-  if(!ghSession.token) return;
-  setSyncStatus('pending', 'Syncing...');
+function isLocalDbEmpty(){
+  return db.employees.length===0 && db.leaves.length===0 && db.holidays.length===0 && db.compOffCredits.length===0;
+}
+
+async function fetchRemoteFile(){
+  const apiUrl = `https://api.github.com/repos/${ghSession.owner}/${ghSession.repo}/contents/${ghSession.path}`;
+  const resp = await fetch(`${apiUrl}?ref=${encodeURIComponent(ghSession.branch)}`, {
+    headers:{ Authorization:`token ${ghSession.token}`, Accept:'application/vnd.github+json' }
+  });
+  if(resp.status === 404) return { exists:false };
+  if(!resp.ok){
+    const j = await resp.json().catch(()=>({}));
+    throw new Error(j.message || `GET failed (${resp.status})`);
+  }
+  const j = await resp.json();
+  return { exists:true, sha:j.sha, content:j.content };
+}
+
+function base64ToWorkbook(base64){
+  const binary = atob(base64.replace(/\n/g,''));
+  const bytes = new Uint8Array(binary.length);
+  for(let i=0;i<binary.length;i++) bytes[i] = binary.charCodeAt(i);
+  return XLSX.read(bytes, {type:'array'});
+}
+
+async function loadFromGithub(){
+  if(!ghSession.token || !ghSession.owner || !ghSession.repo){
+    toast("Enter GitHub settings and token first");
+    return;
+  }
+  ghSession.connected = true;
+  setSyncStatus('pending', 'Loading from GitHub...');
   try{
-    const wb = buildWorkbook();
-    const wbout = XLSX.write(wb, {bookType:'xlsx', type:'array'});
-    const base64 = arrayBufferToBase64(wbout);
-    const apiUrl = `https://api.github.com/repos/${ghSession.owner}/${ghSession.repo}/contents/${ghSession.path}`;
-
-    let sha;
-    const getResp = await fetch(`${apiUrl}?ref=${encodeURIComponent(ghSession.branch)}`, {
-      headers:{ Authorization:`token ${ghSession.token}`, Accept:'application/vnd.github+json' }
-    });
-    if(getResp.ok){ const j = await getResp.json(); sha = j.sha; }
-    else if(getResp.status !== 404){
-      const j = await getResp.json().catch(()=>({}));
-      throw new Error(j.message || `GET failed (${getResp.status})`);
+    const remote = await fetchRemoteFile();
+    if(!remote.exists){
+      setSyncStatus('err', 'No file found at that path yet in the repo.');
+      return;
     }
-
-    const body = {
-      message: `Update leave data - ${new Date().toISOString()}`,
-      content: base64,
-      branch: ghSession.branch
-    };
-    if(sha) body.sha = sha;
-
-    const putResp = await fetch(apiUrl, {
-      method:'PUT',
-      headers:{ Authorization:`token ${ghSession.token}`, Accept:'application/vnd.github+json', 'Content-Type':'application/json' },
-      body: JSON.stringify(body)
-    });
-    if(!putResp.ok){
-      const j = await putResp.json().catch(()=>({}));
-      throw new Error(j.message || `Push failed (${putResp.status})`);
-    }
-    setSyncStatus('ok', `Last synced ${new Date().toLocaleTimeString()}`);
+    const wb = base64ToWorkbook(remote.content);
+    importWorkbook(wb);
+    saveDB();
+    renderAll();
+    setSyncStatus('ok', `Loaded from GitHub ${new Date().toLocaleTimeString()}`);
+    toast("Data loaded from GitHub");
   } catch(err){
     setSyncStatus('err', err.message);
+  }
+}
+
+let syncInFlight = false;
+let syncRerunQueued = false;
+
+async function pushToGithub(force){
+  if(!ghSession.token) return;
+
+  // Prevent overlapping pushes (a common cause of "sha does not match" conflicts):
+  // if a push is already running, just remember to run again once it's done.
+  if(syncInFlight){
+    syncRerunQueued = true;
+    return;
+  }
+  syncInFlight = true;
+  setSyncStatus('pending', 'Syncing...');
+
+  const MAX_ATTEMPTS = 3;
+  try{
+    for(let attempt=1; attempt<=MAX_ATTEMPTS; attempt++){
+      try{
+        const remote = await fetchRemoteFile();
+
+        // Safety guard: never silently overwrite existing remote data with an empty local database.
+        if(!force && remote.exists && isLocalDbEmpty()){
+          let remoteHasData = false;
+          try{
+            const remoteWb = base64ToWorkbook(remote.content);
+            if(remoteWb.SheetNames.includes("Employees")){
+              remoteHasData = XLSX.utils.sheet_to_json(remoteWb.Sheets["Employees"]).length > 0;
+            }
+          } catch(e){ /* if we can't parse it, err on the side of caution below */ }
+          if(remoteHasData){
+            setSyncStatus('err', 'Local data is empty but GitHub already has data — auto-sync blocked to avoid wiping it. Click "Load from GitHub" to restore, or "Sync Now" to force-overwrite.');
+            return;
+          }
+        }
+
+        const wb = buildWorkbook();
+        const wbout = XLSX.write(wb, {bookType:'xlsx', type:'array'});
+        const base64 = arrayBufferToBase64(wbout);
+        const apiUrl = `https://api.github.com/repos/${ghSession.owner}/${ghSession.repo}/contents/${ghSession.path}`;
+
+        const body = {
+          message: `Update leave data - ${new Date().toISOString()}`,
+          content: base64,
+          branch: ghSession.branch
+        };
+        if(remote.exists) body.sha = remote.sha;
+
+        const putResp = await fetch(apiUrl, {
+          method:'PUT',
+          headers:{ Authorization:`token ${ghSession.token}`, Accept:'application/vnd.github+json', 'Content-Type':'application/json' },
+          body: JSON.stringify(body)
+        });
+
+        if(!putResp.ok){
+          const j = await putResp.json().catch(()=>({}));
+          const msg = j.message || `Push failed (${putResp.status})`;
+          const isShaConflict = putResp.status === 409 || /does not match|sha/i.test(msg);
+          if(isShaConflict && attempt < MAX_ATTEMPTS){
+            // The file changed on GitHub since we last read it (e.g. an overlapping sync).
+            // Re-fetch the latest sha and retry rather than surfacing an error.
+            continue;
+          }
+          throw new Error(msg);
+        }
+
+        setSyncStatus('ok', `Last synced ${new Date().toLocaleTimeString()}`);
+        return;
+      } catch(err){
+        if(attempt >= MAX_ATTEMPTS) throw err;
+      }
+    }
+  } catch(err){
+    setSyncStatus('err', err.message);
+  } finally{
+    syncInFlight = false;
+    if(syncRerunQueued){
+      syncRerunQueued = false;
+      pushToGithub(force);
+    }
   }
 }
 
